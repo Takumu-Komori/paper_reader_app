@@ -1,0 +1,31 @@
+/* ============================================================
+   グローバルスタイル
+   ここではアプリ全体に共通するスタイルだけを書く。
+   各コンポーネントのスタイルは App.jsx 内に書いてある。
+   ============================================================ */
+
+/* ブラウザのデフォルトmargin/paddingをリセット */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ページ全体の背景色・文字色 */
+body {
+  background: #0f0f13;
+  color: #e8e6e0;
+  font-family: 'Georgia', 'Times New Roman', serif;
+}
+
+/* ローディングスピナーのアニメーション */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Canvas要素のデフォルト表示設定 */
+canvas {
+  display: block;
+}

@@ -319,7 +319,7 @@ export default function App() {
            rgba(赤, 緑, 青, 透明度) で指定
            ← 数値を変えると色・濃さが変わる */
         .textLayer ::selection {
-          background: rgba(300, 60, 60, 0.35);  /* 赤系・半透明 */
+          background: rgba(255, 60, 60, 0.35);  /* 赤系・半透明 */
         }
       `}</style>
 

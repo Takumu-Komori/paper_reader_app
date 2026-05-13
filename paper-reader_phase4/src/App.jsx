@@ -232,14 +232,29 @@ export default function App() {
       renderTaskRef.current = renderTask;
       await renderTask.promise;
       if (textLayerRef.current) {
-        textLayerRef.current.innerHTML    = "";
-        textLayerRef.current.style.width  = `${viewport.width}px`;
-        textLayerRef.current.style.height = `${viewport.height}px`;
+        textLayerRef.current.innerHTML = "";
+
+        // fix(phase1.5): textLayer専用のviewportを生成する
+        // renderTextLayer() に Canvas描画用の viewport をそのまま渡すと
+        // PDF.js内部のtransform計算がずれて選択範囲が数文字分ずれる。
+        // clone({ dontFlip: false }) で textLayer 用の変換行列を正しく生成する。
+        const textViewport = viewport.clone({ dontFlip: false });
+
+        textLayerRef.current.style.width  = `${textViewport.width}px`;
+        textLayerRef.current.style.height = `${textViewport.height}px`;
+
+        // textLayerにviewportの変換行列をCSSで適用する
+        // PDF座標系（Y軸が下向き）をブラウザ座標系に合わせるために必要
+        const { transform } = textViewport;
+        textLayerRef.current.style.setProperty(
+          "--scale-factor", transform[0]  // スケール係数を CSS変数として渡す
+        );
+
         const textContent = await page.getTextContent();
         const tl = window.pdfjsLib.renderTextLayer({
           textContentSource: textContent,
           container: textLayerRef.current,
-          viewport,
+          viewport: textViewport,         // ← textLayer専用viewportを使う
         });
         await tl.promise;
       }
@@ -652,7 +667,21 @@ export default function App() {
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         canvas { display: block; }
-        .textLayer span { color:transparent; position:absolute; white-space:pre; cursor:text; transform-origin:0% 0%; }
+        /* fix(phase1.5): textLayerのspan座標ズレ修正
+           PDF.jsが各spanに inline style で transform: scaleX() を付与する。
+           transform-origin を 0% 0% にしないと基準点がずれる。
+           font-size は --scale-factor を使ってPDF座標に合わせる。 */
+        .textLayer {
+          line-height: 1;
+        }
+        .textLayer span {
+          color: transparent;
+          position: absolute;
+          white-space: pre;
+          cursor: text;
+          transform-origin: 0% 0%;
+          /* PDF.jsが自動付与するtransformが正しく効くようにする */
+        }
         .textLayer ::selection { background: rgba(210, 60, 60, 0.35); }
         .menu-item:hover { background: #2a2a35 !important; }
         .sidebar-body::-webkit-scrollbar { width: 4px; }

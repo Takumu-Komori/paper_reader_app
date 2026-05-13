@@ -54,8 +54,8 @@ async function callClaudeAPI(systemPrompt, userMessage) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      // ※ claude.ai の Artifact環境ではAPIキー不要（自動で付与される）
-      // ※ StackBlitz など外部環境では APIキーが必要
+      "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
       model: CLAUDE_MODEL,

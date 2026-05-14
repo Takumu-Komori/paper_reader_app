@@ -50,7 +50,7 @@ const CLAUDE_MODEL = "claude-sonnet-4-20250514";
 // 【戻り値】
 //   AIの応答テキスト（文字列）
 async function callClaudeAPI(systemPrompt, userMessage) {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const response = await fetch("/api/anthropic/v1/messages", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

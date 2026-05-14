@@ -41,7 +41,7 @@ const PDFJS_CDN = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${PDFJS_VERSION
 
 // ── Claude APIの設定 ─────────────────────────────────────────
 // モデル名: 常にこのバージョンを使う
-const CLAUDE_MODEL = "claude-sonnet-4-20250514";
+const CLAUDE_MODEL = "claude-sonnet-4-5";
 
 // ── フェーズ3で追加: Claude APIを呼び出す関数 ────────────────
 // 【引数】
@@ -50,6 +50,7 @@ const CLAUDE_MODEL = "claude-sonnet-4-20250514";
 // 【戻り値】
 //   AIの応答テキスト（文字列）
 async function callClaudeAPI(systemPrompt, userMessage) {
+  console.log("APIキー確認:", import.meta.env.VITE_ANTHROPIC_API_KEY ? "読み込み済み" : "未読み込み");
   const response = await fetch("/api/anthropic/v1/messages", {
     method: "POST",
     headers: {

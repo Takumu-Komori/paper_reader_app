@@ -338,13 +338,14 @@ export default function App() {
   };
   const handleSaveComment = () => {
     if (!commentTarget) return;
-    setComments((prev) => [{
+    // fix: 先頭追加 → 末尾追加に変更（新規は下に表示）
+    setComments((prev) => [...prev, {
       id: Date.now(),
       text: commentTarget.text,
       note: commentInput,
       page: commentTarget.page,
       createdAt: new Date().toLocaleTimeString("ja-JP"),
-    }, ...prev]);
+    }]);
     setCommentTarget(null);
     setCommentInput("");
   };
@@ -379,9 +380,8 @@ export default function App() {
       // Claude APIを呼び出す（非同期・awaitで完了を待つ）
       const result = await callClaudeAPI(systemPrompt, userMessage);
 
-      // 結果を配列の先頭に追加（履歴として積み上げ）
-      // prev = 現在の配列 → [新しい結果, ...既存の結果]
-      setAiResults((prev) => [{
+      // fix: 先頭追加 → 末尾追加に変更（新規は下に表示）
+      setAiResults((prev) => [...prev, {
         id:         Date.now(),
         type,                          // "translate" | "explain"
         sourceText: text,              // 元の選択テキスト
@@ -389,7 +389,7 @@ export default function App() {
         page:       currentPage,       // ページ番号
         option,                        // 要約の場合の粒度オプション
         createdAt:  new Date().toLocaleTimeString("ja-JP"),
-      }, ...prev]);
+      }]);
 
     } catch (err) {
       // エラーが発生した場合はエラーメッセージを表示
@@ -420,7 +420,10 @@ export default function App() {
 
   const styles = {
     app: {
-      minHeight: "100vh", background: "#0f0f13", color: "#e8e6e0",
+      // fix: minHeight→height に変更してoverflowを制御
+      // minHeight だとサイドバーが伸びてページ全体を押し下げる
+      height: "100vh", overflow: "hidden",
+      background: "#0f0f13", color: "#e8e6e0",
       fontFamily: "'Georgia', 'Times New Roman', serif",
       display: "flex", flexDirection: "column",
     },
@@ -440,7 +443,12 @@ export default function App() {
       padding: "5px 12px", borderRadius: "6px",
       cursor: "pointer", fontSize: "12px",
     },
-    main: { flex: 1, display: "flex", overflow: "hidden" },
+    main: {
+      flex: 1, display: "flex", overflow: "hidden",
+      // fix: minHeight:0 を追加
+      // flexコンテナ内で overflow:hidden を効かせるために必須
+      minHeight: 0,
+    },
     pdfArea: {
       flex: 1, display: "flex", flexDirection: "column",
       alignItems: "center", padding: "20px",
@@ -552,6 +560,10 @@ export default function App() {
     sidebarBody: {
       flex: 1, overflowY: "auto", padding: "12px",
       display: "flex", flexDirection: "column", gap: "10px",
+      // fix: height:0 → minHeight:0 に変更
+      // minHeight:0 = flexコンテナ内でスクロールを独立させる正しい書き方
+      // height:0 だと内容が見えなくなるケースがある
+      minHeight: 0,
     },
 
     // コメント系スタイル

@@ -1,5 +1,5 @@
 // ============================================================
-// 論文リーダー - フェーズ3.5: 要約機能（行数オプション付き）
+// 論文リーダー - フェーズ4: PDFメタデータへのノート保存・復元
 // ============================================================
 //
 // 【フェーズ2からの追加点】
@@ -133,6 +133,22 @@ const SUMMARIZE_LABELS = {
   "detail": "詳細要約",
 };
 
+// ── フェーズ4で追加: pdf-libの読み込み ─────────────────────
+// pdf-lib（ピーディーエフリブ）= PDFの読み書きができるライブラリ
+// PDF.jsは「表示専用」だが、pdf-libは「書き込み」もできる
+// CDNから動的に読み込んで window.PDFLib として使う
+function usePdfLib() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    if (window.PDFLib) { setReady(true); return; }
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js";
+    script.onload = () => setReady(true);
+    document.head.appendChild(script);
+  }, []);
+  return ready;
+}
+
 // ── カスタムフック: PDF.jsの読み込み ────────────────────────
 function usePdfJs() {
   const [ready, setReady] = useState(false);
@@ -157,6 +173,8 @@ function usePdfJs() {
 // ── メインコンポーネント ─────────────────────────────────────
 export default function App() {
   const pdfJsReady = usePdfJs();
+  // フェーズ4で追加: pdf-libの準備完了フラグ
+  const pdfLibReady = usePdfLib();
 
   // ── 状態管理 ─────────────────────────────────────────────
   const [pdfDoc,       setPdfDoc]       = useState(null);
@@ -213,6 +231,10 @@ export default function App() {
   const fileInputRef2   = useRef(null);
   const textLayerRef    = useRef(null);
   const commentInputRef = useRef(null);
+  // フェーズ4で追加: 読み込んだPDFのバイナリデータを保持する
+  // useState ではなく useRef を使う理由:
+  //   バイナリデータは大きく、変更時に再描画が不要なため
+  const pdfBytesRef = useRef(null);
 
   // ── PDFページの描画処理 ──────────────────────────────────
   const renderPage = useCallback(async (doc, pageNum, pageScale) => {
@@ -283,9 +305,19 @@ export default function App() {
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
+        const arrayBuffer = e.target.result;
+        const uint8 = new Uint8Array(arrayBuffer);
+
+        // フェーズ4で追加: バイナリデータを保持しておく（保存時に使う）
+        pdfBytesRef.current = uint8;
+
         const doc = await window.pdfjsLib
-          .getDocument({ data: new Uint8Array(e.target.result) }).promise;
+          .getDocument({ data: uint8 }).promise;
         setPdfDoc(doc); setTotalPages(doc.numPages);
+
+        // フェーズ4で追加: メタデータからノートを読み込む
+        await loadNotesFromPdf(uint8);
+
       } catch { alert("PDFの読み込みに失敗しました"); }
       finally { setIsLoading(false); }
     };
@@ -413,6 +445,74 @@ export default function App() {
   // AI結果の削除
   const handleDeleteAiResult = (id) => {
     setAiResults((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  // ── フェーズ4で追加: PDFへのノート保存 ─────────────────────
+  // 【処理の流れ】
+  //   コメント・AI結果をJSONに変換
+  //   → pdf-libでPDFのメタデータに書き込む
+  //   → 新しいPDFとしてダウンロードさせる
+  const handleSaveToPdf = async () => {
+    if (!pdfBytesRef.current) { alert("PDFが読み込まれていません"); return; }
+    if (!pdfLibReady)         { alert("pdf-libがまだ読み込まれていません"); return; }
+    try {
+      // pdf-libでPDFを読み込む（PDF.jsとは別のライブラリ）
+      const pdfDoc = await window.PDFLib.PDFDocument.load(pdfBytesRef.current);
+
+      // 保存するデータをJSONに変換
+      // JSON.stringify = JavaScriptのオブジェクトを文字列に変換する関数
+      const notesData = JSON.stringify({ comments, aiResults });
+
+      // メタデータのKeywordsフィールドにJSONを書き込む
+      pdfDoc.setKeywords([`PaperReaderNotes:${notesData}`]);
+
+      // 保存済みPDFのバイナリを生成
+      const savedBytes = await pdfDoc.save();
+
+      // ブラウザのダウンロード機能でファイルを保存させる
+      // Blob（ブロブ）= バイナリデータをブラウザで扱うオブジェクト
+      const blob = new Blob([savedBytes], { type: "application/pdf" });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement("a");
+      a.href     = url;
+      a.download = fileName.replace(".pdf", "_notes.pdf");
+      a.click();
+      URL.revokeObjectURL(url); // メモリを解放する
+    } catch (err) {
+      alert(`保存に失敗しました: ${err.message}`);
+    }
+  };
+
+  // ── フェーズ4で追加: PDFからノートを読み込む ─────────────────
+  // 【処理の流れ】
+  //   pdf-libでメタデータを読む
+  //   → PaperReaderNotes: というキーワードを探す
+  //   → JSONをパース（文字列→オブジェクトに変換）
+  //   → コメント・AI結果を復元する
+  const loadNotesFromPdf = async (uint8) => {
+    if (!pdfLibReady) return;
+    try {
+      const pdfDoc   = await window.PDFLib.PDFDocument.load(uint8);
+      const keywords = pdfDoc.getKeywords();
+      if (!keywords) return;
+
+      // "PaperReaderNotes:" で始まるキーワードを探す
+      const notesKeyword = keywords
+        .split(",")
+        .map(k => k.trim())
+        .find(k => k.startsWith("PaperReaderNotes:"));
+
+      if (!notesKeyword) return;
+
+      // JSON.parse = 文字列をJavaScriptのオブジェクトに変換する関数
+      const notesData = JSON.parse(notesKeyword.replace("PaperReaderNotes:", ""));
+      if (notesData.comments)  setComments(notesData.comments);
+      if (notesData.aiResults) setAiResults(notesData.aiResults);
+
+    } catch (err) {
+      // 通常のPDFにはノートデータがないので無視する
+      console.log("ノートデータなし（通常のPDF）:", err.message);
+    }
   };
 
   // ── スタイル定義 ─────────────────────────────────────────
@@ -708,6 +808,19 @@ export default function App() {
         <span style={styles.logo}>📄 論文リーダー</span>
         <span style={styles.badge}>Phase 3.5</span>
         {fileName && <span style={styles.fileName}>{fileName}</span>}
+        {/* フェーズ4で追加: ノート保存ボタン（PDF読み込み後に表示）*/}
+        {pdfDoc && (
+          <button
+            style={{
+              background: "#2a2a35", border: "1px solid #3a3a4a",
+              color: "#c8b89a", padding: "5px 12px",
+              borderRadius: "6px", cursor: "pointer", fontSize: "12px",
+            }}
+            onClick={(e) => { e.stopPropagation(); handleSaveToPdf(); }}
+          >
+            💾 ノートを保存
+          </button>
+        )}
         <button
           style={styles.sidebarToggle}
           onClick={(e) => { e.stopPropagation(); setSidebarOpen(o => !o); }}
@@ -721,9 +834,9 @@ export default function App() {
         {/* ── 左: PDF表示エリア ── */}
         <div style={styles.pdfArea} className="pdf-area">
           <div style={styles.phaseNote}>
-            <strong style={{ color: ACCENT }}>🤖 フェーズ3.5: 要約機能追加</strong><br />
-            テキストを選択して右クリック → 「和訳」「用語説明」「要約」が使えます。<br />
-            要約は 3行 / 5行 / 詳細 から粒度を選べます。
+            <strong style={{ color: ACCENT }}>💾 フェーズ4: ノート保存・復元</strong><br />
+            「ノートを保存」でコメント・AI結果をPDFに埋め込んで保存できます。<br />
+            保存したPDFを再アップロードすると、コメントが自動で復元されます。
           </div>
 
           {!pdfDoc && !isLoading && (

@@ -301,6 +301,7 @@ export default function App() {
     }
     setIsLoading(true); setFileName(file.name);
     setPdfDoc(null); setCurrentPage(1); setTotalPages(0);
+    setComments([]); setAiResults([]);
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
@@ -457,14 +458,23 @@ export default function App() {
     if (!pdfLibReady)         { alert("pdf-libがまだ読み込まれていません"); return; }
     try {
       // pdf-libでPDFを読み込む（PDF.jsとは別のライブラリ）
-      const pdfDoc = await window.PDFLib.PDFDocument.load(new Uint8Array(pdfBytesRef.current));
+      const pdfDoc = await window.PDFLib.PDFDocument.load(
+        new Uint8Array(pdfBytesRef.current),
+        { updateMetadata: false }
+      );
+      const currentAuthor = pdfDoc.getAuthor();
+      pdfDoc.setAuthor(typeof currentAuthor === "string" ? currentAuthor : "");
+      
+      
 
       // 保存するデータをJSONに変換
       // JSON.stringify = JavaScriptのオブジェクトを文字列に変換する関数
       const notesData = JSON.stringify({ comments, aiResults });
+      pdfDoc.setSubject(`PaperReaderNotes:${notesData}`);
 
       // メタデータのKeywordsフィールドにJSONを書き込む
-      pdfDoc.setKeywords([`PaperReaderNotes:${notesData}`]);
+      
+      console.log("keywords設定後：", pdfDoc.getKeywords());
 
       // 保存済みPDFのバイナリを生成
       const savedBytes = await pdfDoc.save();
@@ -490,22 +500,17 @@ export default function App() {
   //   → JSONをパース（文字列→オブジェクトに変換）
   //   → コメント・AI結果を復元する
   const loadNotesFromPdf = async (uint8) => {
-    if (!pdfLibReady) return;
+    console.log("loadNotesFromPdf 開始, pdfLibReady:", pdfLibReady);
+    //pdf-libが読み込まれるまで最大3秒待つ
+    if (!pdfLibReady) {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      if (!window.PDFLib)return; //それでも読み込まれてなければ諦める
+    }
     try {
       const pdfDoc   = await window.PDFLib.PDFDocument.load(new Uint8Array(uint8));
-      const keywords = pdfDoc.getKeywords();
-      if (!keywords) return;
-
-      // "PaperReaderNotes:" で始まるキーワードを探す
-      const notesKeyword = keywords
-        .split(",")
-        .map(k => k.trim())
-        .find(k => k.startsWith("PaperReaderNotes:"));
-
-      if (!notesKeyword) return;
-
-      // JSON.parse = 文字列をJavaScriptのオブジェクトに変換する関数
-      const notesData = JSON.parse(notesKeyword.replace("PaperReaderNotes:", ""));
+      const subject = pdfDoc.getSubject();
+      if (!subject || !subject.startsWith("PaperReaderNotes:")) return;
+      const notesData = JSON.parse(subject.replace("PaperReaderNotes:", ""));
       if (notesData.comments)  setComments(notesData.comments);
       if (notesData.aiResults) setAiResults(notesData.aiResults);
 

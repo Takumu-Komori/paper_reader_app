@@ -99,7 +99,6 @@ const TRANSLATE_SYSTEM = `あなたは学術論文の翻訳専門家です。
 const EXPLAIN_SYSTEM = `あなたは学術論文の用語解説専門家です。
 入力された専門用語・概念を、大学院生が理解できるレベルで日本語で説明してください。
 以下の形式で出力してください:
-【読み方】（わかる場合）
 【意味】2〜3文で簡潔に
 【例】具体例があれば1つ
 説明のみを出力し、前置きは不要です。`;
@@ -306,17 +305,18 @@ export default function App() {
     reader.onload = async (e) => {
       try {
         const arrayBuffer = e.target.result;
+
+        // ① まずコピーを保存（PDF.jsに渡す前）
+        pdfBytesRef.current = arrayBuffer.slice(0);
+
+          // ② PDF.js用のUint8Arrayを作成
         const uint8 = new Uint8Array(arrayBuffer);
-
-        // フェーズ4で追加: バイナリデータを保持しておく（保存時に使う）
-        pdfBytesRef.current = uint8;
-
         const doc = await window.pdfjsLib
           .getDocument({ data: uint8 }).promise;
         setPdfDoc(doc); setTotalPages(doc.numPages);
 
         // フェーズ4で追加: メタデータからノートを読み込む
-        await loadNotesFromPdf(uint8);
+        await loadNotesFromPdf( pdfBytesRef.current.slice(0));
 
       } catch { alert("PDFの読み込みに失敗しました"); }
       finally { setIsLoading(false); }
@@ -457,7 +457,7 @@ export default function App() {
     if (!pdfLibReady)         { alert("pdf-libがまだ読み込まれていません"); return; }
     try {
       // pdf-libでPDFを読み込む（PDF.jsとは別のライブラリ）
-      const pdfDoc = await window.PDFLib.PDFDocument.load(pdfBytesRef.current);
+      const pdfDoc = await window.PDFLib.PDFDocument.load(new Uint8Array(pdfBytesRef.current));
 
       // 保存するデータをJSONに変換
       // JSON.stringify = JavaScriptのオブジェクトを文字列に変換する関数
@@ -492,7 +492,7 @@ export default function App() {
   const loadNotesFromPdf = async (uint8) => {
     if (!pdfLibReady) return;
     try {
-      const pdfDoc   = await window.PDFLib.PDFDocument.load(uint8);
+      const pdfDoc   = await window.PDFLib.PDFDocument.load(new Uint8Array(uint8));
       const keywords = pdfDoc.getKeywords();
       if (!keywords) return;
 

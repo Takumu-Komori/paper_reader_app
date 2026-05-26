@@ -189,6 +189,10 @@ export default function App() {
   // 右クリックメニュー
   const [contextMenu,  setContextMenu]  = useState(null);
 
+  // フェーズ4.5で追加: 選択テキストポップアップ（iPad対応）
+  // { x, y, text } = 表示位置と対象テキスト / null = 非表示
+  const [selectionPopup, setSelectionPopup] = useState(null);
+
   // サイドバー
   const [sidebarOpen,  setSidebarOpen]  = useState(true);
 
@@ -338,9 +342,28 @@ export default function App() {
     const v = parseInt(e.target.value);
     if (!isNaN(v) && v >= 1 && v <= totalPages) setCurrentPage(v);
   };
-  const handleMouseUp = () => {
+  const handleMouseUp = (e) => {
     const text = window.getSelection()?.toString().trim();
-    if (text) setSelectedText(text);
+    if (!text) {
+      setSelectionPopup(null);
+      return;
+    }
+    setSelectedText(text);
+
+    // フェーズ4.5で追加: ポップアップの表示位置を計算する
+    // iPad では右クリックが使えないため、選択後にボタンを表示する
+    // getClientRects() = 選択範囲の画面上の座標を取得する
+    const selection = window.getSelection();
+    if (selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const rect  = range.getBoundingClientRect();
+      setSelectionPopup({
+        // 選択範囲の中央上部にポップアップを表示する
+        x: rect.left + rect.width / 2,
+        y: rect.top - 8, // 選択範囲の8px上
+        text,
+      });
+    }
   };
 
   // ── 右クリックメニュー ───────────────────────────────────
@@ -350,7 +373,10 @@ export default function App() {
     if (!text) return;
     setContextMenu({ x: e.clientX, y: e.clientY, text });
   };
-  const closeContextMenu = () => setContextMenu(null);
+  const closeContextMenu = () => {
+    setContextMenu(null);
+    setSelectionPopup(null); // ポップアップも同時に閉じる
+  };
 
   // Google検索
   const handleGoogleSearch = (text) => {
@@ -777,6 +803,36 @@ export default function App() {
     }),
     menuLabel: { padding: "6px 16px 4px", fontSize: "10px", color: "#5a5a7a", letterSpacing: "0.08em" },
     menuDivider: { borderTop: "1px solid #2a2a35", margin: "4px 0" },
+
+    // フェーズ4.5で追加: 選択テキストポップアップのスタイル
+    // position: fixed で画面上に固定表示
+    // transform: translate(-50%, -100%) で選択範囲の中央上部に配置
+    selectionPopup: (x, y) => ({
+      position: "fixed",
+      top: y,
+      left: x,
+      transform: "translate(-50%, -100%)", // 中央揃え・上に表示
+      background: "#1a1a22",
+      border: "1px solid #3a3a4a",
+      borderRadius: "10px",
+      boxShadow: "0 4px 20px rgba(0,0,0,0.6)",
+      display: "flex",
+      gap: "4px",
+      padding: "6px",
+      zIndex: 1000,
+    }),
+    // ポップアップ内の各ボタン
+    popupBtn: {
+      background: "#2a2a35",
+      border: "1px solid #3a3a4a",
+      color: "#e8e6e0",
+      borderRadius: "6px",
+      padding: "6px 10px",
+      cursor: "pointer",
+      fontSize: "12px",
+      fontFamily: "inherit",
+      whiteSpace: "nowrap",
+    },
   };
 
   // ── JSX ─────────────────────────────────────────────────
@@ -1049,6 +1105,54 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* ── フェーズ4.5で追加: 選択テキストポップアップ（iPad対応）── */}
+      {/* selectionPopup が null でないとき（テキストが選択されたとき）表示 */}
+      {selectionPopup && (
+        <div
+          style={styles.selectionPopup(selectionPopup.x, selectionPopup.y)}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Google検索 */}
+          <button style={styles.popupBtn}
+            onClick={() => handleGoogleSearch(selectionPopup.text)}>
+            🔍
+          </button>
+          {/* コメント追加 */}
+          <button style={styles.popupBtn}
+            onClick={() => handleAddCommentStart(selectionPopup.text)}>
+            💬
+          </button>
+          {/* 和訳 */}
+          <button style={styles.popupBtn}
+            onClick={() => handleTranslate(selectionPopup.text)}>
+            🌐
+          </button>
+          {/* 用語説明 */}
+          <button style={styles.popupBtn}
+            onClick={() => handleExplainTerm(selectionPopup.text)}>
+            📖
+          </button>
+          {/* 要約（3行固定） */}
+          <button style={styles.popupBtn}
+            onClick={() => handleSummarize(selectionPopup.text, "3")}>
+            📝3行
+          </button>
+          <button style={styles.popupBtn}
+            onClick={() => handleSummarize(selectionPopup.text, "5")}>
+            📝5行
+          </button>
+          <button style={styles.popupBtn}
+            onClick={() => handleSummarize(selectionPopup.text, "detail")}>
+            📝詳細
+          </button>
+          {/* 閉じるボタン */}
+          <button style={{ ...styles.popupBtn, color: "#5a5a7a" }}
+            onClick={() => setSelectionPopup(null)}>
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* ── 右クリックメニュー ── */}
       {contextMenu && (
